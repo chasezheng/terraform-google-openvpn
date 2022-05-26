@@ -183,6 +183,7 @@ resource "null_resource" "openvpn_update_users_script" {
     user        = var.remote_user
     host        = google_compute_address.default.address
     private_key = tls_private_key.ssh-key.private_key_pem
+    agent       = false
   }
 
   provisioner "file" {
