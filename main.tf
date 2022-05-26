@@ -22,6 +22,7 @@ locals {
 
 resource "google_compute_firewall" "allow-external-ssh" {
   name    = "openvpn-${var.name}-allow-external-ssh"
+  project = var.project_id
   network = var.network
 
   allow {
@@ -35,6 +36,7 @@ resource "google_compute_firewall" "allow-external-ssh" {
 
 resource "google_compute_firewall" "allow-openvpn-udp-port" {
   name        = "openvpn-${var.name}-allow"
+  project     = var.project_id
   network     = var.network
   description = "Creates firewall rule targeting the openvpn instance"
 
@@ -55,6 +57,7 @@ resource "google_compute_firewall" "allow-openvpn-udp-port" {
 
 resource "google_compute_address" "default" {
   name         = "openvpn-${var.name}-global-ip"
+  project      = var.project_id
   region       = var.region
   network_tier = var.network_tier
 }
@@ -81,11 +84,12 @@ resource "random_id" "password" {
 
 // Use a persistent disk so that it can be remounted on another instance.
 resource "google_compute_disk" "this" {
-  name  = "openvpn-${var.name}-disk"
-  image = var.image_family
-  size  = var.disk_size_gb
-  type  = var.disk_type
-  zone  = var.zone
+  name    = "openvpn-${var.name}-disk"
+  image   = var.image_family
+  size    = var.disk_size_gb
+  type    = var.disk_type
+  project = var.project_id
+  zone    = var.zone
 }
 
 #-------------------
