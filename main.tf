@@ -2,47 +2,20 @@
 # creates and deletes users accordingly
 
 locals {
-  metadata = merge(var.metadata, {
-    sshKeys = "${var.remote_user}:${tls_private_key.ssh-key.public_key_openssh}"
-  })
-  ssh_tag     = ["allow-ssh"]
-  openvpn_tag = ["openvpn-${var.name}"]
-  tags        = toset(concat(var.tags, local.ssh_tag, local.openvpn_tag))
-
-  output_folder    = var.output_dir
   private_key_file = "private-key.pem"
   # adding the null_resource to prevent evaluating this until the openvpn_update_users has executed
   refetch_user_ovpn = null_resource.openvpn_update_users_script.id != "" ? !alltrue([for x in var.users : fileexists("${var.output_dir}/${x}.ovpn")]) : false
-  name              = var.name == "" ? "" : "${var.name}-"
-  access_config = [{
-    nat_ip       = google_compute_address.default.address
-    network_tier = var.network_tier
-  }]
 }
 
-resource "google_compute_firewall" "allow-external-ssh" {
-  name    = "openvpn-${var.name}-allow-external-ssh"
-  project = var.project_id
-  network = var.network
-
-  allow {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = local.ssh_tag
-}
-
-resource "google_compute_firewall" "allow-openvpn-udp-port" {
-  name        = "openvpn-${var.name}-allow"
+resource "google_compute_firewall" "allow-ingress-to-openvpn-server" {
+  name        = "openvpn-${var.name}-allow-ingress"
   project     = var.project_id
   network     = var.network
   description = "Creates firewall rule targeting the openvpn instance"
 
   allow {
     protocol = "tcp"
-    ports    = ["1194"]
+    ports    = ["1194", "22"]
   }
 
   allow {
@@ -51,9 +24,8 @@ resource "google_compute_firewall" "allow-openvpn-udp-port" {
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = local.openvpn_tag
+  target_tags   = ["openvpn-${var.name}"]
 }
-
 
 resource "google_compute_address" "default" {
   name         = "openvpn-${var.name}-global-ip"
@@ -63,9 +35,9 @@ resource "google_compute_address" "default" {
 }
 
 resource "tls_private_key" "ssh-key" {
-  algorithm = "RSA"
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P521"
 }
-
 
 // SSH Private Key
 resource "local_sensitive_file" "private_key" {
@@ -74,34 +46,22 @@ resource "local_sensitive_file" "private_key" {
   file_permission = "0400"
 }
 
-resource "random_id" "this" {
-  byte_length = "8"
+resource "random_string" "openvpn_server_suffix" {
+  length  = 8
+  special = false
+  upper   = false
 }
 
-resource "random_id" "password" {
-  byte_length = "16"
-}
-
-// Use a persistent disk so that it can be remounted on another instance.
-resource "google_compute_disk" "this" {
-  name    = "openvpn-${var.name}-disk"
-  image   = var.image_family
-  size    = var.disk_size_gb
-  type    = var.disk_type
-  project = var.project_id
-  zone    = var.zone
-}
-
-#-------------------
-# Instance Template
-#-------------------
-resource "google_compute_instance_template" "tpl" {
-  name_prefix  = "openvpn-${var.name}-"
+resource "google_compute_instance" "openvpn_server" {
+  name         = "openvpn-${var.name}-${random_string.openvpn_server_suffix.id}"
   project      = var.project_id
   machine_type = var.machine_type
   labels       = var.labels
-  metadata     = local.metadata
-  region       = var.region
+  metadata = merge(
+    var.metadata,
+    { sshKeys = "${var.remote_user}:${tls_private_key.ssh-key.public_key_openssh}" }
+  )
+  zone = var.zone
 
   metadata_startup_script = <<SCRIPT
     curl -O ${var.install_script_url}
@@ -109,7 +69,6 @@ resource "google_compute_instance_template" "tpl" {
     mv openvpn-install.sh /home/${var.remote_user}/
     chown ${var.remote_user}:${var.remote_user} /home/${var.remote_user}/openvpn-install.sh
     export AUTO_INSTALL=y
-    export PASS=1
     # Using Custom DNS
     export DNS=13
     export DNS1="${var.dns_servers[0]}"
@@ -119,18 +78,20 @@ resource "google_compute_instance_template" "tpl" {
     /home/${var.remote_user}/openvpn-install.sh
   SCRIPT
 
-  disk {
-    auto_delete = var.auto_delete_disk
-    boot        = true
-    source      = google_compute_disk.this.name
+  boot_disk {
+    auto_delete = true
+    initialize_params {
+      type  = "pd-standard"
+      image = "ubuntu-minimal-2004-focal-v20220419a"
+    }
   }
 
   dynamic "service_account" {
-    for_each = [var.service_account]
+    for_each = var.service_account == null ? [] : [var.service_account]
 
     content {
-      email  = lookup(service_account.value, "email", null)
-      scopes = lookup(service_account.value, "scopes", null)
+      email  = try(each.value.email, null)
+      scopes = try(each.scopes, [])
     }
   }
 
@@ -138,44 +99,32 @@ resource "google_compute_instance_template" "tpl" {
     network    = var.network
     subnetwork = var.subnetwork
 
-    dynamic "access_config" {
-      for_each = local.access_config
-
-      content {
-        nat_ip       = access_config.value.nat_ip
-        network_tier = access_config.value.network_tier
-      }
-    }
-  }
-
-  tags = local.tags
-
-  lifecycle {
-    create_before_destroy = "true"
-  }
-}
-
-resource "google_compute_instance_from_template" "this" {
-  name    = "openvpn-${var.name}"
-  project = var.project_id
-  zone    = var.zone
-
-  network_interface {
-    network    = var.network
-    subnetwork = var.subnetwork
     access_config {
       nat_ip       = google_compute_address.default.address
       network_tier = var.network_tier
     }
   }
-  source_instance_template = google_compute_instance_template.tpl.self_link
+
+  tags = toset(
+    concat(var.tags, tolist(google_compute_firewall.allow-ingress-to-openvpn-server.target_tags))
+  )
+
+
+  lifecycle {
+    create_before_destroy = "true"
+  }
+
+  provisioner "local-exec" {
+    command = "ssh-keygen -R \"${self.network_interface[0].access_config[0].nat_ip}\" || true"
+    when    = destroy
+  }
 }
 
 # Updates/creates the users VPN credentials on the VPN server
 resource "null_resource" "openvpn_update_users_script" {
   triggers = {
     users    = join(",", var.users)
-    instance = google_compute_instance_from_template.this.instance_id
+    instance = google_compute_instance.openvpn_server.instance_id
   }
 
   connection {
@@ -184,6 +133,7 @@ resource "null_resource" "openvpn_update_users_script" {
     host        = google_compute_address.default.address
     private_key = tls_private_key.ssh-key.private_key_pem
     agent       = false
+    timeout     = "60s"
   }
 
   provisioner "file" {
@@ -195,9 +145,10 @@ resource "null_resource" "openvpn_update_users_script" {
   # Create New User with MENU_OPTION=1
   provisioner "remote-exec" {
     inline = [
-      "while [ ! -f /etc/openvpn/server.conf ]; do sleep 10; done",
+      "while [ ! -f /etc/openvpn/server.conf ]; do sleep 1; done",
+      "while [ ! -f /etc/openvpn/client-template.txt ]; do sleep 1; done",
       "chmod +x ~${var.remote_user}/update_users.sh",
-      "sudo ROUTE_ONLY_PRIVATE_IPS='${var.route_only_private_ips}' ~${var.remote_user}/update_users.sh ${join(" ", var.users)}",
+      "sudo REVOKE_ALL_CLIENT_CERTIFICATES=n ROUTE_ONLY_PRIVATE_IPS='${var.route_only_private_ips}' ~${var.remote_user}/update_users.sh ${join(" ", var.users)}",
     ]
     when = create
   }
@@ -208,9 +159,8 @@ resource "null_resource" "openvpn_update_users_script" {
     when    = create
   }
 
-  depends_on = [google_compute_instance_from_template.this, local_sensitive_file.private_key]
+  depends_on = [google_compute_instance.openvpn_server, local_sensitive_file.private_key, tls_private_key.ssh-key]
 }
-
 
 # Download user configurations to output_dir
 resource "null_resource" "openvpn_download_configurations" {

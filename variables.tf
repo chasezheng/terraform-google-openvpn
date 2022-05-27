@@ -27,35 +27,14 @@ variable "subnetwork" {
   default     = null
 }
 
-variable "image_family" {
-  type    = string
-  default = "ubuntu-2004-lts"
-}
-
-variable "disk_type" {
-  description = "(Optional) The GCE disk type. Can be either pd-ssd, local-ssd, pd-balanced or pd-standard"
-  default     = "pd-standard"
-}
-
-variable "disk_size_gb" {
-  type    = string
-  default = "30"
-}
-
-variable "auto_delete_disk" {
-  description = "Whether or not the boot disk should be auto-deleted"
-  default     = false
-}
-
 variable "service_account" {
-  default = {
-    email  = null
-    scopes = []
-  }
-  type = object({
-    email  = string,
-    scopes = set(string)
-  })
+  default = null
+  type = object(
+    {
+      email  = string,
+      scopes = set(string)
+    }
+  )
   description = "Service account to attach to the instance. See https://www.terraform.io/docs/providers/google/r/compute_instance_template.html#service_account."
 }
 
@@ -97,7 +76,7 @@ variable "remote_user" {
 
 variable "machine_type" {
   description = "Machine type to create, e.g. n1-standard-1"
-  default     = "n1-standard-1"
+  default     = "e2-micro"
 }
 
 variable "route_only_private_ips" {
@@ -106,9 +85,9 @@ variable "route_only_private_ips" {
 }
 
 variable "install_script_url" {
-  description = "The commit sha we are using in order to determine which version of the install file to use: https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh"
+  description = "Openvpn install script url."
   type        = string
-  default     = "https://raw.githubusercontent.com/angristan/openvpn-install/master/openvpn-install.sh"
+  default     = "https://raw.githubusercontent.com/angristan/openvpn-install/b3b7593b2d4dd146f9c9da810bcec9b07a69c026/openvpn-install.sh"
 }
 
 variable "dns_servers" {
