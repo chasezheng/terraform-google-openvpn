@@ -15,12 +15,12 @@ resource "google_compute_firewall" "allow-ingress-to-openvpn-server" {
 
   allow {
     protocol = "tcp"
-    ports    = ["1194", "22"]
+    ports    = [var.server_port, "22"]
   }
 
   allow {
     protocol = "udp"
-    ports    = ["1194"]
+    ports    = [var.server_port]
   }
 
   source_ranges = ["0.0.0.0/0"]
@@ -75,6 +75,8 @@ resource "google_compute_instance" "openvpn_server" {
     %{if length(var.dns_servers) > 1~}
     export DNS2="${var.dns_servers[1]}"
     %{endif~}
+    export PORT_CHOICE=2
+    export PORT=${var.server_port}
     /home/${var.remote_user}/openvpn-install.sh
   SCRIPT
 
@@ -108,11 +110,6 @@ resource "google_compute_instance" "openvpn_server" {
   tags = toset(
     concat(var.tags, tolist(google_compute_firewall.allow-ingress-to-openvpn-server.target_tags))
   )
-
-
-  lifecycle {
-    create_before_destroy = "true"
-  }
 
   provisioner "local-exec" {
     command = "ssh-keygen -R \"${self.network_interface[0].access_config[0].nat_ip}\" || true"

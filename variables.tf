@@ -99,3 +99,8 @@ variable "dns_servers" {
     error_message = "The variable 'var.dns_servers' should be an array with 1 or 2 DNS entries only."
   }
 }
+
+variable "server_port" {
+  default = 1194
+  type    = number
+}
