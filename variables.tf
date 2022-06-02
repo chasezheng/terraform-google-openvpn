@@ -104,3 +104,8 @@ variable "server_port" {
   default = 1194
   type    = number
 }
+
+variable "protocol" {
+  default = "udp"
+  type    = string
+}

@@ -4,6 +4,7 @@ if [[ "$REFETCH_USER_OVPN" = "true" ]];then
       -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
       $REMOTE_USER@$IP_ADDRESS:/home/$REMOTE_USER/*.ovpn .
+  echo "Fetched user configs at $(realpath .)"
 else
   echo "Not fetching ovpn. All files upto date"
  fi

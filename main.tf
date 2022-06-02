@@ -77,6 +77,7 @@ resource "google_compute_instance" "openvpn_server" {
     %{endif~}
     export PORT_CHOICE=2
     export PORT=${var.server_port}
+    export PROTOCOL_CHOICE=${var.protocol == "udp" ? 1 : 2}
     /home/${var.remote_user}/openvpn-install.sh
   SCRIPT
 
