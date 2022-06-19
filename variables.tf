@@ -3,7 +3,7 @@ variable "project_id" {
   default     = null
 }
 
-variable "name" {
+variable "name_prefix" {
   type        = string
   description = "The name to use when generating resources"
 }

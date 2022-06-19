@@ -5,10 +5,17 @@ locals {
   private_key_file = "private-key.pem"
   # adding the null_resource to prevent evaluating this until the openvpn_update_users has executed
   refetch_user_ovpn = null_resource.openvpn_update_users_script.id != "" ? !alltrue([for x in var.users : fileexists("${var.output_dir}/${x}.ovpn")]) : false
+  name              = "${var.name_prefix}-${random_string.name_suffix.result}"
+}
+
+resource "random_string" "name_suffix" {
+  length  = 8
+  special = false
+  upper   = false
 }
 
 resource "google_compute_firewall" "allow-ingress-to-openvpn-server" {
-  name        = "openvpn-${var.name}-allow-ingress"
+  name        = "openvpn-allow-ingress-${local.name}"
   project     = var.project_id
   network     = var.network
   description = "Creates firewall rule targeting the openvpn instance"
@@ -24,11 +31,11 @@ resource "google_compute_firewall" "allow-ingress-to-openvpn-server" {
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["openvpn-${var.name}"]
+  target_tags   = ["openvpn-${local.name}"]
 }
 
 resource "google_compute_address" "default" {
-  name         = "openvpn-${var.name}-global-ip"
+  name         = "openvpn-global-ip-${local.name}"
   project      = var.project_id
   region       = var.region
   network_tier = var.network_tier
@@ -46,14 +53,9 @@ resource "local_sensitive_file" "private_key" {
   file_permission = "0400"
 }
 
-resource "random_string" "openvpn_server_suffix" {
-  length  = 8
-  special = false
-  upper   = false
-}
 
 resource "google_compute_instance" "openvpn_server" {
-  name         = "openvpn-${var.name}-${random_string.openvpn_server_suffix.id}"
+  name         = "openvpn-${local.name}"
   project      = var.project_id
   machine_type = var.machine_type
   labels       = var.labels
