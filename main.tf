@@ -172,8 +172,7 @@ resource "null_resource" "openvpn_download_configurations" {
 
   # Copy .ovpn config for user from server to var.output_dir
   provisioner "local-exec" {
-    working_dir = var.output_dir
-    command     = "${abspath(path.module)}/scripts/refetch_user.sh"
+    command     = "mkdir -p ${var.output_dir} && ${abspath(path.module)}/scripts/refetch_user.sh"
     environment = {
       REFETCH_USER_OVPN = local.refetch_user_ovpn
       PRIVATE_KEY_FILE  = local.private_key_file
